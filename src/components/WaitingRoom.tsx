@@ -33,7 +33,7 @@ const WaitingRoom: React.FC = () => {
                   <li key={player.id} className="flex items-center justify-between p-2 rounded bg-secondary">
                     <span className="font-medium">{player.username}</span>
                     {player.ready ? (
-                      <Badge variant="success" className="bg-game-green">Ready</Badge>
+                      <Badge variant="secondary" className="bg-game-green text-white">Ready</Badge>
                     ) : (
                       <Badge variant="outline">Not Ready</Badge>
                     )}
