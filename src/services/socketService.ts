@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
 
@@ -9,6 +8,12 @@ export type Player = {
   ready: boolean;
   score: number;
   bestTime?: number;
+};
+
+export type LeaderboardEntry = {
+  username: string;
+  best_time: number;
+  games_played: number;
 };
 
 export type GameState = {
@@ -24,7 +29,7 @@ export type GameState = {
   results: any[];
   scores: any[];
   finalScores: any[];
-  leaderboard: any[];
+  leaderboard: LeaderboardEntry[];
   error: string | null;
   latestClick: {
     reactionTime: number;
@@ -138,9 +143,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
     socket.on('game_ended', (data) => {
       set({ 
         gameStatus: 'ended',
-        finalScores: data.finalScores,
+        finalScores: data.finalScores || [],
         leaderboard: data.leaderboard || []
       });
+      
+      // Save best time to local storage for quick display on reconnect
+      if (data.finalScores) {
+        const currentPlayer = data.finalScores.find(
+          (player) => player.username === get().username
+        );
+        if (currentPlayer && currentPlayer.bestTime) {
+          localStorage.setItem('bestTime', currentPlayer.bestTime.toString());
+        }
+      }
     });
     
     socket.on('room_reset', (data) => {

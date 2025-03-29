@@ -431,40 +431,52 @@ function endGame(room) {
     bestTime: p.bestTime
   })).sort((a, b) => b.score - a.score);
   
-  // Update leaderboard
-  finalScores.forEach(player => {
+  // Update leaderboard for each player
+  const leaderboardPromises = finalScores.map(player => {
     if (players[player.playerId]) {
-      updateLeaderboard(players[player.playerId]);
+      return updateLeaderboard(players[player.playerId]);
     }
+    return Promise.resolve();
   });
   
-  // Send final results to players
-  io.to(room.id).emit('game_ended', {
-    finalScores,
-    leaderboard: getTopPlayers(10)
-  });
-  
-  // Reset room after 10 seconds
-  setTimeout(() => {
-    if (rooms[room.id]) {
-      room.status = GAME_STATES.LOBBY;
-      room.round = 0;
-      room.startTime = null;
-      room.targetTime = null;
-      room.roundType = null;
-      room.results = {};
-      
-      Object.values(room.players).forEach(p => {
-        p.ready = false;
-        p.score = 0;
+  // Get leaderboard data and send everything to players
+  getTopPlayers(10)
+    .then(leaderboard => {
+      io.to(room.id).emit('game_ended', {
+        finalScores,
+        leaderboard
       });
       
-      io.to(room.id).emit('room_reset', {
-        roomStatus: GAME_STATES.LOBBY,
-        players: Object.values(room.players)
+      // Reset room after 10 seconds
+      setTimeout(() => {
+        if (rooms[room.id]) {
+          room.status = GAME_STATES.LOBBY;
+          room.round = 0;
+          room.startTime = null;
+          room.targetTime = null;
+          room.roundType = null;
+          room.results = {};
+          
+          Object.values(room.players).forEach(p => {
+            p.ready = false;
+            p.score = 0;
+          });
+          
+          io.to(room.id).emit('room_reset', {
+            roomStatus: GAME_STATES.LOBBY,
+            players: Object.values(room.players)
+          });
+        }
+      }, 10000);
+    })
+    .catch(error => {
+      console.error('Error getting leaderboard:', error);
+      // Still emit game_ended even if we can't get the leaderboard
+      io.to(room.id).emit('game_ended', {
+        finalScores,
+        leaderboard: []
       });
-    }
-  }, 10000);
+    });
 }
 
 // Calculate score based on accuracy
@@ -488,7 +500,7 @@ function calculateScore(accuracy) {
   }
 }
 
-// Update leaderboard
+// Modified updateLeaderboard function to be more robust
 function updateLeaderboard(player) {
   const now = new Date().toISOString();
   
@@ -503,25 +515,34 @@ function updateLeaderboard(player) {
       if (!row.best_time || player.bestTime < row.best_time) {
         db.run(
           'UPDATE leaderboard SET best_time = ?, games_played = games_played + 1, last_played = ? WHERE id = ?',
-          [player.bestTime, now, player.id]
+          [player.bestTime, now, player.id],
+          (err) => {
+            if (err) console.error('Error updating leaderboard:', err);
+          }
         );
       } else {
         db.run(
           'UPDATE leaderboard SET games_played = games_played + 1, last_played = ? WHERE id = ?',
-          [now, player.id]
+          [now, player.id],
+          (err) => {
+            if (err) console.error('Error updating leaderboard:', err);
+          }
         );
       }
     } else {
       // Insert new player
       db.run(
         'INSERT INTO leaderboard (id, username, best_time, games_played, last_played) VALUES (?, ?, ?, ?, ?)',
-        [player.id, player.username, player.bestTime, 1, now]
+        [player.id, player.username, player.bestTime, 1, now],
+        (err) => {
+          if (err) console.error('Error inserting into leaderboard:', err);
+        }
       );
     }
   });
 }
 
-// Get top players from leaderboard
+// Improved getTopPlayers function with better error handling
 function getTopPlayers(limit) {
   return new Promise((resolve, reject) => {
     db.all(
@@ -531,13 +552,27 @@ function getTopPlayers(limit) {
         if (err) {
           console.error('Database error:', err);
           reject(err);
-        } else {
-          resolve(rows);
+          return;
         }
+        resolve(rows || []);
       }
     );
   });
 }
+
+// Add a new endpoint to get leaderboard data
+app.get('/api/leaderboard', (req, res) => {
+  const limit = req.query.limit ? parseInt(req.query.limit) : 10;
+  
+  getTopPlayers(limit)
+    .then(leaderboard => {
+      res.json({ leaderboard });
+    })
+    .catch(error => {
+      console.error('Error fetching leaderboard:', error);
+      res.status(500).json({ error: 'Failed to fetch leaderboard data' });
+    });
+});
 
 // Start the server
 const PORT = process.env.PORT || 3001;

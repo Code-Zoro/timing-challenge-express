@@ -79,3 +79,28 @@ export function calculateFinalScore(accuracy: number, timing: number): number {
   // Calculate weighted final score
   return Math.round((accuracy * accuracyWeight) + (timingScore * timingWeight));
 }
+
+/**
+ * Sort leaderboard entries by score (highest first)
+ */
+export function sortLeaderboardByScore(leaderboard: any[]): any[] {
+  return [...leaderboard].sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Sort leaderboard entries by best time (lowest first)
+ */
+export function sortLeaderboardByTime(leaderboard: any[]): any[] {
+  return [...leaderboard].sort((a, b) => a.best_time - b.best_time);
+}
+
+/**
+ * Format time in milliseconds to a readable format
+ */
+export function formatTime(ms: number): string {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  } else {
+    return `${(ms / 1000).toFixed(2)}s`;
+  }
+}
