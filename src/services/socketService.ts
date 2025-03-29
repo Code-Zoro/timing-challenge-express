@@ -1,3 +1,4 @@
+
 import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
 
@@ -14,7 +15,7 @@ export type GameState = {
   connected: boolean;
   roomId: string | null;
   players: Player[];
-  gameStatus: 'waiting' | 'lobby' | 'color_round' | 'font_round' | 'scores' | 'ended';
+  gameStatus: 'waiting' | 'lobby' | 'countdown' | 'started' | 'color_round' | 'font_round' | 'scores' | 'results' | 'ended';
   currentRound: number;
   totalRounds: number;
   waitTime: number;

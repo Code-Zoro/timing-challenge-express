@@ -70,10 +70,10 @@ const GameContainer: React.FC = () => {
       case 'lobby':
       case 'waiting':
         return <WaitingRoom />;
-      case 'color_round':
-      case 'font_round':
       case 'countdown':
       case 'started':
+      case 'color_round':
+      case 'font_round':
         return <GameArea />;
       case 'scores':
       case 'results':
