@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useGameStore } from '../services/socketService';
 import ColorRound from './ColorRound';
 import FontRound from './FontRound';
-import { CircleOff, Clock } from 'lucide-react';
+import { Clock } from 'lucide-react';
 
 const GameArea: React.FC = () => {
   const { 

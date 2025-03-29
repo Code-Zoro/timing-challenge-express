@@ -469,6 +469,10 @@ function endGame(room) {
 
 // Calculate score based on accuracy
 function calculateScore(accuracy) {
+  // For color rounds: accuracy is the color distance (lower is better)
+  // For font rounds: accuracy is 0 (correct) or 1 (incorrect)
+  
+  // Different scoring for different round types
   if (accuracy <= 50) {
     return 100;
   } else if (accuracy <= 100) {

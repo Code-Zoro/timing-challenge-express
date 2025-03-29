@@ -35,3 +35,47 @@ function hexToRgb(hex: string): { r: number, g: number, b: number } | null {
       }
     : null;
 }
+
+/**
+ * Calculate score based on color distance
+ * Returns a score between 0-100, where 100 is a perfect match
+ */
+export function calculateColorScore(targetColor: string, selectedColor: string): number {
+  const distance = colorDistance(targetColor, selectedColor);
+  
+  // Score calculation - inverse of distance with a cap
+  // Max distance that we consider (pure black to pure white is ~442)
+  const maxDistance = 442;
+  const normalizedDistance = Math.min(distance, maxDistance) / maxDistance;
+  
+  // Convert to a 0-100 score (0 = worst, 100 = best)
+  return Math.round((1 - normalizedDistance) * 100);
+}
+
+/**
+ * Calculate score based on font selection accuracy
+ * Returns 100 for correct answer, 0 for incorrect
+ */
+export function calculateFontScore(targetFont: string, selectedFont: string): number {
+  return targetFont === selectedFont ? 100 : 0;
+}
+
+/**
+ * Calculate the final score based on accuracy and timing
+ * @param accuracy Score from 0-100 for accuracy
+ * @param timing Time difference from target in ms (lower is better)
+ * @returns Final score from 0-100
+ */
+export function calculateFinalScore(accuracy: number, timing: number): number {
+  // Weight accuracy more than timing
+  const accuracyWeight = 0.7;
+  const timingWeight = 0.3;
+  
+  // For timing, we want 0 ms difference to be perfect, and >1000ms to be worst
+  const maxTimingDifference = 1000;
+  const normalizedTiming = Math.min(timing, maxTimingDifference) / maxTimingDifference;
+  const timingScore = (1 - normalizedTiming) * 100;
+  
+  // Calculate weighted final score
+  return Math.round((accuracy * accuracyWeight) + (timingScore * timingWeight));
+}
