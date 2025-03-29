@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,6 +62,15 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				game: {
+					'blue': '#3b82f6',
+					'green': '#22c55e',
+					'red': '#ef4444',
+					'yellow': '#eab308',
+					'purple': '#8b5cf6',
+					'dark': '#1e293b',
+					'light': '#f8fafc'
 				}
 			},
 			borderRadius: {
@@ -84,11 +94,48 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'pulse-light': {
+					'0%, 100%': { 
+						opacity: '1' 
+					},
+					'50%': { 
+						opacity: '0.7' 
+					}
+				},
+				'countdown': {
+					'0%': {
+						transform: 'scale(1.2)',
+						opacity: '0'
+					},
+					'15%': {
+						transform: 'scale(1)',
+						opacity: '1'
+					},
+					'85%': {
+						transform: 'scale(1)',
+						opacity: '1'
+					},
+					'100%': {
+						transform: 'scale(0.8)',
+						opacity: '0'
+					}
+				},
+				'fade-in': {
+					'0%': {
+						opacity: '0'
+					},
+					'100%': {
+						opacity: '1'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'pulse-light': 'pulse-light 2s ease-in-out infinite',
+				'countdown': 'countdown 1s ease-in-out forwards',
+				'fade-in': 'fade-in 0.5s ease-in-out forwards'
 			}
 		}
 	},
