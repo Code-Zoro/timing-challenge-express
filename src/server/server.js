@@ -1,4 +1,3 @@
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -33,6 +32,15 @@ db.serialize(() => {
 const rooms = {};
 const players = {};
 
+// Game state machine constants
+const GAME_STATES = {
+  LOBBY: 'lobby',
+  COLOR_ROUND: 'color_round',
+  FONT_ROUND: 'font_round',
+  SCORES: 'scores',
+  ENDED: 'ended'
+};
+
 // Socket.io connection handler
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
@@ -53,7 +61,7 @@ io.on('connection', (socket) => {
     // Get or create a room with less than 4 players
     let roomId = null;
     for (const id in rooms) {
-      if (Object.keys(rooms[id].players).length < 4) {
+      if (Object.keys(rooms[id].players).length < 4 && rooms[id].status === GAME_STATES.LOBBY) {
         roomId = id;
         break;
       }
@@ -63,10 +71,11 @@ io.on('connection', (socket) => {
       roomId = 'room_' + Date.now();
       rooms[roomId] = {
         id: roomId,
-        status: 'waiting',
+        status: GAME_STATES.LOBBY,
         players: {},
         startTime: null,
         targetTime: null,
+        roundType: null,
         results: {}
       };
     }
@@ -78,8 +87,89 @@ io.on('connection', (socket) => {
     
     // Notify all clients in the room
     io.to(roomId).emit('player_joined', {
+      roomId: roomId,
       playerId: socket.id,
       username: players[socket.id].username,
+      players: Object.values(rooms[roomId].players),
+      roomStatus: rooms[roomId].status
+    });
+  });
+
+  // Handle create room
+  socket.on('create_room', () => {
+    const player = players[socket.id];
+    if (!player) return;
+    
+    // Leave current room if any
+    if (player.room && rooms[player.room]) {
+      leaveRoom(socket, player);
+    }
+    
+    // Create new room
+    const roomId = 'room_' + Date.now();
+    rooms[roomId] = {
+      id: roomId,
+      status: GAME_STATES.LOBBY,
+      players: {},
+      startTime: null,
+      targetTime: null,
+      roundType: null,
+      results: {}
+    };
+    
+    // Join the new room
+    socket.join(roomId);
+    player.room = roomId;
+    rooms[roomId].players[socket.id] = player;
+    
+    // Notify client
+    socket.emit('player_joined', {
+      roomId: roomId,
+      playerId: socket.id,
+      username: player.username,
+      players: Object.values(rooms[roomId].players),
+      roomStatus: rooms[roomId].status
+    });
+  });
+  
+  // Handle join room
+  socket.on('join_room', (roomId) => {
+    const player = players[socket.id];
+    if (!player) return;
+    
+    // Check if room exists
+    if (!rooms[roomId]) {
+      socket.emit('error', 'Room does not exist');
+      return;
+    }
+    
+    // Check if room is full
+    if (Object.keys(rooms[roomId].players).length >= 4) {
+      socket.emit('error', 'Room is full');
+      return;
+    }
+    
+    // Check if game already started
+    if (rooms[roomId].status !== GAME_STATES.LOBBY) {
+      socket.emit('error', 'Game already in progress');
+      return;
+    }
+    
+    // Leave current room if any
+    if (player.room && rooms[player.room]) {
+      leaveRoom(socket, player);
+    }
+    
+    // Join the new room
+    socket.join(roomId);
+    player.room = roomId;
+    rooms[roomId].players[socket.id] = player;
+    
+    // Notify all clients in the room
+    io.to(roomId).emit('player_joined', {
+      roomId: roomId,
+      playerId: socket.id,
+      username: player.username,
       players: Object.values(rooms[roomId].players),
       roomStatus: rooms[roomId].status
     });
@@ -114,7 +204,7 @@ io.on('connection', (socket) => {
     if (!player || !player.room) return;
     
     const room = rooms[player.room];
-    if (!room || room.status !== 'started' || !room.targetTime) return;
+    if (!room || (room.status !== GAME_STATES.COLOR_ROUND && room.status !== GAME_STATES.FONT_ROUND) || !room.targetTime) return;
     
     // Calculate reaction time
     const reactionTime = timestamp - room.startTime;
@@ -125,7 +215,8 @@ io.on('connection', (socket) => {
     room.results[socket.id] = { 
       reactionTime,
       accuracy,
-      score: calculateScore(accuracy)
+      score: calculateScore(accuracy),
+      roundType: room.status
     };
     
     player.score += room.results[socket.id].score;
@@ -139,7 +230,8 @@ io.on('connection', (socket) => {
         reactionTime,
         accuracy,
         score: room.results[socket.id].score,
-        targetTime
+        targetTime,
+        roundType: room.status
       });
     }
   });
@@ -148,30 +240,7 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     const player = players[socket.id];
     if (player && player.room) {
-      const room = rooms[player.room];
-      if (room) {
-        delete room.players[socket.id];
-        
-        // If room is empty, delete it
-        if (Object.keys(room.players).length === 0) {
-          delete rooms[player.room];
-        } else {
-          // Notify remaining players
-          io.to(player.room).emit('player_left', {
-            playerId: socket.id,
-            players: Object.values(room.players)
-          });
-          
-          // If game was started and not enough players, end game
-          if (room.status === 'started' && Object.keys(room.players).length < 2) {
-            room.status = 'waiting';
-            io.to(player.room).emit('game_ended', {
-              reason: 'Not enough players',
-              players: Object.values(room.players)
-            });
-          }
-        }
-      }
+      leaveRoom(socket, player);
     }
     
     // Update leaderboard if player had a score
@@ -184,9 +253,42 @@ io.on('connection', (socket) => {
   });
 });
 
+// Helper function to handle a player leaving a room
+function leaveRoom(socket, player) {
+  const room = rooms[player.room];
+  if (!room) return;
+  
+  // Remove player from room
+  delete room.players[socket.id];
+  socket.leave(player.room);
+  
+  // If room is empty, delete it
+  if (Object.keys(room.players).length === 0) {
+    delete rooms[player.room];
+  } else {
+    // Notify remaining players
+    io.to(player.room).emit('player_left', {
+      playerId: socket.id,
+      players: Object.values(room.players)
+    });
+    
+    // If game was started and not enough players, end game
+    if (room.status !== GAME_STATES.LOBBY && Object.keys(room.players).length < 2) {
+      room.status = GAME_STATES.LOBBY;
+      io.to(player.room).emit('game_ended', {
+        reason: 'Not enough players',
+        players: Object.values(room.players)
+      });
+    }
+  }
+  
+  // Clear player's room
+  player.room = null;
+}
+
 // Start a game in a room
 function startGame(room) {
-  room.status = 'countdown';
+  room.status = GAME_STATES.COLOR_ROUND;
   room.round = 1;
   
   // Reset player scores
@@ -203,13 +305,14 @@ function startGame(room) {
   
   // Start countdown
   setTimeout(() => {
-    startRound(room);
+    startColorRound(room);
   }, 3000);
 }
 
-// Start a round
-function startRound(room) {
-  room.status = 'started';
+// Start a color round
+function startColorRound(room) {
+  room.status = GAME_STATES.COLOR_ROUND;
+  room.roundType = GAME_STATES.COLOR_ROUND;
   room.results = {};
   
   // Random wait between 1-5 seconds
@@ -226,13 +329,40 @@ function startRound(room) {
   io.to(room.id).emit('round_started', {
     round: room.round,
     waitTime,
-    targetTime
+    targetTime,
+    roundType: GAME_STATES.COLOR_ROUND
+  });
+}
+
+// Start a font round
+function startFontRound(room) {
+  room.status = GAME_STATES.FONT_ROUND;
+  room.roundType = GAME_STATES.FONT_ROUND;
+  room.results = {};
+  
+  // Random wait between 1-5 seconds
+  const waitTime = 1000 + Math.random() * 4000;
+  
+  // Random target time between 200-1000ms
+  const targetTime = 200 + Math.random() * 800;
+  
+  // Start time and target time
+  room.startTime = Date.now() + waitTime;
+  room.targetTime = targetTime;
+  
+  // Send target to players
+  io.to(room.id).emit('round_started', {
+    round: room.round,
+    waitTime,
+    targetTime,
+    roundType: GAME_STATES.FONT_ROUND
   });
 }
 
 // End a round and show results
 function endRound(room) {
-  room.status = 'results';
+  const previousRound = room.status;
+  room.status = GAME_STATES.SCORES;
   
   // Calculate ranking
   const results = Object.entries(room.results).map(([playerId, result]) => ({
@@ -253,6 +383,17 @@ function endRound(room) {
     }
   });
   
+  // Determine next round type
+  let nextRound = null;
+  if (previousRound === GAME_STATES.COLOR_ROUND) {
+    nextRound = GAME_STATES.FONT_ROUND;
+  } else {
+    room.round++;
+    if (room.round <= 5) {
+      nextRound = GAME_STATES.COLOR_ROUND;
+    }
+  }
+  
   // Send results to players
   io.to(room.id).emit('round_ended', {
     results,
@@ -260,23 +401,27 @@ function endRound(room) {
       playerId: p.id,
       username: p.username,
       score: p.score
-    })).sort((a, b) => b.score - a.score)
+    })).sort((a, b) => b.score - a.score),
+    nextRound
   });
   
   // Start next round or end game
-  room.round++;
-  if (room.round <= 5) {
+  if (nextRound) {
     setTimeout(() => {
-      startRound(room);
+      if (nextRound === GAME_STATES.COLOR_ROUND) {
+        startColorRound(room);
+      } else {
+        startFontRound(room);
+      }
     }, 5000);
-  } else {
+  } else if (room.round > 5) {
     endGame(room);
   }
 }
 
 // End the game
 function endGame(room) {
-  room.status = 'ended';
+  room.status = GAME_STATES.ENDED;
   
   // Calculate final results
   const finalScores = Object.values(room.players).map(p => ({
@@ -302,10 +447,11 @@ function endGame(room) {
   // Reset room after 10 seconds
   setTimeout(() => {
     if (rooms[room.id]) {
-      room.status = 'waiting';
+      room.status = GAME_STATES.LOBBY;
       room.round = 0;
       room.startTime = null;
       room.targetTime = null;
+      room.roundType = null;
       room.results = {};
       
       Object.values(room.players).forEach(p => {
@@ -314,7 +460,7 @@ function endGame(room) {
       });
       
       io.to(room.id).emit('room_reset', {
-        roomStatus: 'waiting',
+        roomStatus: GAME_STATES.LOBBY,
         players: Object.values(room.players)
       });
     }

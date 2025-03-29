@@ -67,11 +67,15 @@ const GameContainer: React.FC = () => {
     }
 
     switch (gameStatus) {
+      case 'lobby':
       case 'waiting':
         return <WaitingRoom />;
+      case 'color_round':
+      case 'font_round':
       case 'countdown':
       case 'started':
         return <GameArea />;
+      case 'scores':
       case 'results':
         return <ResultsView />;
       case 'ended':
@@ -85,7 +89,7 @@ const GameContainer: React.FC = () => {
     <div className="h-full flex flex-col">
       <header className="p-4 bg-primary text-primary-foreground">
         <div className="container flex items-center justify-between">
-          <h1 className="text-xl font-bold">Timing Challenge</h1>
+          <h1 className="text-xl font-bold">Multiplayer Game Challenge</h1>
           {hasUsername && <div className="font-medium">Playing as: {username}</div>}
         </div>
       </header>
@@ -98,7 +102,7 @@ const GameContainer: React.FC = () => {
       
       <footer className="p-4 bg-secondary text-secondary-foreground text-sm">
         <div className="container text-center">
-          <p>Multiplayer Timing Challenge Game — Test your timing skills against others!</p>
+          <p>Test your timing skills through color and font challenges!</p>
         </div>
       </footer>
     </div>

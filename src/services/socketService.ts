@@ -1,4 +1,3 @@
-
 import { io, Socket } from 'socket.io-client';
 import { create } from 'zustand';
 
@@ -15,7 +14,7 @@ export type GameState = {
   connected: boolean;
   roomId: string | null;
   players: Player[];
-  gameStatus: 'waiting' | 'countdown' | 'started' | 'results' | 'ended';
+  gameStatus: 'waiting' | 'lobby' | 'color_round' | 'font_round' | 'scores' | 'ended';
   currentRound: number;
   totalRounds: number;
   waitTime: number;
@@ -39,6 +38,8 @@ export type GameStore = GameState & {
   connect: () => void;
   disconnect: () => void;
   joinGame: (username: string) => void;
+  createRoom: () => void;
+  joinRoom: (roomId: string) => void;
   setReady: () => void;
   handleClick: () => void;
   resetGame: () => void;
@@ -53,7 +54,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   username: '',
   roomId: null,
   players: [],
-  gameStatus: 'waiting',
+  gameStatus: 'lobby',
   currentRound: 0,
   totalRounds: 5,
   waitTime: 0,
@@ -70,7 +71,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   connect: () => {
     const socket = io('http://localhost:3001');
     
-    // Socket event handlers
     socket.on('connect', () => {
       set({ socket, connected: true, error: null });
       console.log('Connected to server with ID:', socket.id);
@@ -99,7 +99,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     socket.on('game_starting', (data) => {
       set({ 
-        gameStatus: 'countdown',
+        gameStatus: 'color_round',
         players: data.players,
         latestClick: null
       });
@@ -107,7 +107,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     socket.on('round_started', (data) => {
       set({ 
-        gameStatus: 'started',
+        gameStatus: data.roundType || 'color_round',
         currentRound: data.round,
         waitTime: data.waitTime,
         targetTime: data.targetTime,
@@ -128,7 +128,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     
     socket.on('round_ended', (data) => {
       set({ 
-        gameStatus: 'results',
+        gameStatus: data.nextRound === 'font_round' ? 'font_round' : 'scores',
         results: data.results,
         scores: data.scores
       });
@@ -165,7 +165,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         connected: false,
         roomId: null,
         players: [],
-        gameStatus: 'waiting'
+        gameStatus: 'lobby'
       });
     }
   },
@@ -175,6 +175,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (socket && socket.connected) {
       socket.emit('join_game', username);
       set({ username });
+    }
+  },
+
+  createRoom: () => {
+    const { socket } = get();
+    if (socket && socket.connected) {
+      socket.emit('create_room');
+    }
+  },
+
+  joinRoom: (roomId: string) => {
+    const { socket } = get();
+    if (socket && socket.connected) {
+      socket.emit('join_room', roomId);
     }
   },
   
@@ -187,7 +201,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   
   handleClick: () => {
     const { socket, gameStatus } = get();
-    if (socket && socket.connected && gameStatus === 'started') {
+    if (socket && socket.connected && (gameStatus === 'color_round' || gameStatus === 'font_round')) {
       socket.emit('player_click', Date.now());
     }
   },
